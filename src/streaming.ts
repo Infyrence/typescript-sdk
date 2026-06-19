@@ -1,4 +1,24 @@
 import type { ChatCompletionChunk } from './types.js';
+import { InfyrenceError } from './errors.js';
+
+/** Parse one SSE `data:` payload. Returns a chunk, null to skip, or throws on an error event. */
+function parsePayload(jsonStr: string): ChatCompletionChunk | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    return null; // malformed / keep-alive line
+  }
+  if (typeof data === 'object' && data !== null && 'error' in data) {
+    const err = (data as { error?: { message?: string; type?: string; code?: string; request_id?: string } }).error;
+    const error = new InfyrenceError(err?.message ?? 'Stream error');
+    error.type = err?.type;
+    error.code = err?.code;
+    error.requestId = err?.request_id;
+    throw error;
+  }
+  return data as ChatCompletionChunk;
+}
 
 export async function* parseSSEStream(
   response: Response
@@ -26,25 +46,16 @@ export async function* parseSSEStream(
         if (trimmed === '' || trimmed === 'data: [DONE]') continue;
         if (!trimmed.startsWith('data: ')) continue;
 
-        const jsonStr = trimmed.slice(6);
-        try {
-          const chunk: ChatCompletionChunk = JSON.parse(jsonStr);
-          yield chunk;
-        } catch {
-          // Skip malformed JSON lines
-        }
+        const chunk = parsePayload(trimmed.slice(6));
+        if (chunk) yield chunk;
       }
     }
 
-    // Process any remaining buffer
-    if (buffer.trim() !== '' && buffer.trim() !== 'data: [DONE]' && buffer.startsWith('data: ')) {
-      const jsonStr = buffer.trim().slice(6);
-      try {
-        const chunk: ChatCompletionChunk = JSON.parse(jsonStr);
-        yield chunk;
-      } catch {
-        // Skip malformed JSON
-      }
+    // Process any remaining buffered line.
+    const tail = buffer.trim();
+    if (tail !== '' && tail !== 'data: [DONE]' && tail.startsWith('data: ')) {
+      const chunk = parsePayload(tail.slice(6));
+      if (chunk) yield chunk;
     }
   } finally {
     reader.releaseLock();

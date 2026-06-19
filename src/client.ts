@@ -16,7 +16,7 @@ import {
   ValidationError,
 } from './errors.js';
 
-const DEFAULT_BASE_URL = 'https://infyrence-api.infyrence.workers.dev';
+const DEFAULT_BASE_URL = 'https://api.infyrence.com';
 
 export class Infyrence {
   private readonly apiKey: string;

@@ -52,14 +52,18 @@ export interface ChatCompletionChunk {
   usage?: Usage;
 }
 
+/** A model as returned by `GET /v1/models`. */
 export interface Model {
   id: string;
-  name: string;
+  object: 'model';
+  created: number;
+  owned_by: string;
   provider: string;
-  context: string;
-  input_price: string;
-  output_price: string;
-  tags: string[];
+  capabilities: {
+    chat: boolean;
+    completions: boolean;
+    embeddings: boolean;
+  };
 }
 
 export interface ModelListResponse {
@@ -72,13 +76,31 @@ export interface HealthResponse {
   timestamp: string;
 }
 
-export interface ProviderHealthResponse {
-  status: string;
-  providers: Record<string, { status: string; latency?: number }>;
-}
+/** `GET /v1/health/providers` returns a map of provider name -> health. */
+export type ProviderHealthResponse = Record<
+  string,
+  {
+    healthy: boolean;
+    lastChecked?: string;
+    lastError?: string | null;
+    consecutiveFailures?: number;
+    totalRequests?: number;
+    totalErrors?: number;
+    avgLatencyMs?: number;
+    recentErrors?: string[];
+  }
+>;
 
 export interface InfyrenceClientOptions {
   apiKey: string;
   baseURL?: string;
   timeout?: number;
+}
+
+/** Billing is credit-based: 1 credit = 1000 tokens. */
+export const TOKENS_PER_CREDIT = 1000;
+
+/** Credits consumed for a token count (1 credit = 1000 tokens). */
+export function creditsUsed(totalTokens: number): number {
+  return totalTokens / TOKENS_PER_CREDIT;
 }

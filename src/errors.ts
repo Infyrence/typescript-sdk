@@ -1,6 +1,12 @@
 export class InfyrenceError extends Error {
   public readonly statusCode?: number;
   public readonly response?: Response;
+  /** Gateway request id (X-Request-Id header / error body) — quote it for support. */
+  public requestId?: string;
+  /** Error `type` from the response envelope (e.g. "insufficient_credits"). */
+  public type?: string;
+  /** Error `code` from the response envelope, if present. */
+  public code?: string;
 
   constructor(message: string, statusCode?: number, response?: Response) {
     super(message);
@@ -31,6 +37,14 @@ export class ValidationError extends InfyrenceError {
   }
 }
 
+/** Raised when the organization is out of credits (402). 1 credit = 1000 tokens. */
+export class InsufficientCreditsError extends InfyrenceError {
+  constructor(message = 'Insufficient credits (1 credit = 1000 tokens)', response?: Response) {
+    super(message, 402, response);
+    this.name = 'InsufficientCreditsError';
+  }
+}
+
 export class NotFoundError extends InfyrenceError {
   constructor(message = 'Resource not found', response?: Response) {
     super(message, 404, response);
@@ -47,24 +61,47 @@ export class ServerError extends InfyrenceError {
 
 export function createErrorFromResponse(response: Response, body?: unknown): InfyrenceError {
   const status = response.status;
-  const message =
-    typeof body === 'object' && body !== null && 'error' in body
-      ? String((body as { error: { message?: string } }).error?.message ?? 'Unknown error')
-      : `Request failed with status ${status}`;
 
-  switch (status) {
-    case 401:
-      return new AuthenticationError(message, response);
-    case 400:
-      return new ValidationError(message, response);
-    case 404:
-      return new NotFoundError(message, response);
-    case 429:
-      return new RateLimitError(message, response);
-    default:
-      if (status >= 500) {
-        return new ServerError(message, status, response);
-      }
-      return new InfyrenceError(message, status, response);
+  let message = `Request failed with status ${status}`;
+  let type: string | undefined;
+  let code: string | undefined;
+  let requestId: string | undefined;
+
+  if (typeof body === 'object' && body !== null && 'error' in body) {
+    const err = (body as { error?: { message?: string; type?: string; code?: string; request_id?: string } }).error;
+    if (err) {
+      if (err.message) message = err.message;
+      type = err.type;
+      code = err.code;
+      requestId = err.request_id;
+    }
   }
+  // Header is the authoritative request id; fall back to the body's.
+  requestId = response.headers?.get('x-request-id') ?? requestId;
+
+  let error: InfyrenceError;
+  switch (status) {
+    case 400:
+      error = new ValidationError(message, response);
+      break;
+    case 401:
+      error = new AuthenticationError(message, response);
+      break;
+    case 402:
+      error = new InsufficientCreditsError(message, response);
+      break;
+    case 404:
+      error = new NotFoundError(message, response);
+      break;
+    case 429:
+      error = new RateLimitError(message, response);
+      break;
+    default:
+      error = status >= 500 ? new ServerError(message, status, response) : new InfyrenceError(message, status, response);
+  }
+
+  error.requestId = requestId;
+  error.type = type;
+  error.code = code;
+  return error;
 }

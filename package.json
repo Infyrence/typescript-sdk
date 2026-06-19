@@ -1,8 +1,13 @@
 {
   "name": "infyrence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript SDK for the Infyrence AI inference API",
   "type": "module",
+  "homepage": "https://infyrence.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infyrence/typescript-sdk.git"
+  },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
